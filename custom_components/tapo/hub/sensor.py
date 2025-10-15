@@ -231,30 +231,70 @@ class TriggerEvent(CoordinatedTapoEntity, EventEntity):
 
     async def event_loop(self):
         while True:
-            # Just request 1 event at a time. This is simple and may result in lost events however.
-            # TODO: A better approach may be to cache the last n IDs and try to submit all missing events in order.
-            maybe_response = await self.device.get_component(TriggerLogComponent).get_event_logs(1)
+            # Request up to N events at a time and process all that are newer than
+            # _last_event_id. We iterate oldest->newest to preserve event order.
+            # This reduces the chance of missing events that occur between loop
+            # iterations.
+            BATCH_SIZE = 10
+            maybe_response = await self.device.get_component(TriggerLogComponent).get_event_logs(BATCH_SIZE)
             response = maybe_response.get_or_else(TriggerLogResponse(0, 0, []))
 
+            # If we have no last_event_id, skip the newest event on first run to
+            # avoid re-reporting historical events. However, if multiple events
+            # exist and last_event_id is None, set it to the newest ID so we
+            # won't re-emit history.
             if self._last_event_id is None and len(response.events) > 0:
-                # Skip the first event on startup to avoid re-reporting of historical events.
-                self._last_event_id = response.events[0].id
-            elif not self._last_event_id is None and self._last_event_id != response.events[0].id:
-                if isinstance(response.events[0], SingleClickEvent):
-                    self._last_event_type = TriggerEventTypes.SINGLE_PRESS.value
-                    self._trigger_event(self._last_event_type)
-                elif isinstance(response.events[0], DoubleClickEvent):
-                    self._last_event_type = TriggerEventTypes.DOUBLE_PRESS.value
-                    self._trigger_event(self._last_event_type)
-                elif isinstance(response.events[0], RotationEvent) and response.events[0].degrees >= 0:
-                    self._last_event_type = TriggerEventTypes.ROTATE_CLOCKWISE.value
-                    self._trigger_event(self._last_event_type)
-                elif isinstance(response.events[0], RotationEvent) and response.events[0].degrees < 0:
-                    self._last_event_type = TriggerEventTypes.ROTATE_ANTICLOCKWISE.value
-                    self._trigger_event(self._last_event_type)
+                # Set to the newest event id (last in list) to avoid emitting
+                # historical events immediately.
+                self._last_event_id = response.events[-1].id
+            else:
+                # Process all events older->newer and emit those with id > _last_event_id
+                # If _last_event_id is None, the above branch set it; here it's safe
+                # to assume it is set.
+                saw_new = False
 
-                self.async_write_ha_state()
-                self._last_event_id = response.events[0].id
+                # If there are no events returned but we have a known last_event_id,
+                # then nothing changed since last check — set state to idle.
+                if len(response.events) == 0:
+                    if self._last_event_id is not None:
+                        if self._last_event_type != "idle":
+                            self._last_event_type = "idle"
+                            self.async_write_ha_state()
+                else:
+                    for ev in response.events:
+                        # Only handle events strictly newer than the last seen
+                        if self._last_event_id is not None and ev.id <= self._last_event_id:
+                            continue
+
+                        saw_new = True
+
+                        # Determine event type
+                        if isinstance(ev, SingleClickEvent):
+                            self._last_event_type = TriggerEventTypes.SINGLE_PRESS.value
+                            self._trigger_event(self._last_event_type)
+                        elif isinstance(ev, DoubleClickEvent):
+                            self._last_event_type = TriggerEventTypes.DOUBLE_PRESS.value
+                            self._trigger_event(self._last_event_type)
+                        elif isinstance(ev, RotationEvent) and ev.degrees >= 0:
+                            self._last_event_type = TriggerEventTypes.ROTATE_CLOCKWISE.value
+                            self._trigger_event(self._last_event_type)
+                        elif isinstance(ev, RotationEvent) and ev.degrees < 0:
+                            self._last_event_type = TriggerEventTypes.ROTATE_ANTICLOCKWISE.value
+                            self._trigger_event(self._last_event_type)
+
+                        # Update HA state for each event so UI shows the most recent
+                        # event right after it's emitted.
+                        self.async_write_ha_state()
+
+                        # Update last seen id to this event
+                        self._last_event_id = ev.id
+
+                    # If no new events were detected (all IDs <= _last_event_id),
+                    # set the state to idle.
+                    if not saw_new:
+                        if self._last_event_type != "idle":
+                            self._last_event_type = "idle"
+                            self.async_write_ha_state()
 
             await asyncio.sleep(0.5)
 
