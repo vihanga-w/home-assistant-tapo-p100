@@ -240,13 +240,13 @@ class TriggerEvent(CoordinatedTapoEntity, EventEntity):
                 self._last_event_id = response.events[0].id
             elif not self._last_event_id is None and self._last_event_id != response.events[0].id:
                 if isinstance(response.events[0], SingleClickEvent):
-                    self._trigger_event(TriggerEventTypes.SINGLE_PRESS)
+                    self._trigger_event(TriggerEventTypes.SINGLE_PRESS.value)
                 elif isinstance(response.events[0], DoubleClickEvent):
-                    self._trigger_event(TriggerEventTypes.DOUBLE_PRESS)
+                    self._trigger_event(TriggerEventTypes.DOUBLE_PRESS.value)
                 elif isinstance(response.events[0], RotationEvent) and response.events[0].degrees >= 0:
-                    self._trigger_event(TriggerEventTypes.ROTATE_CLOCKWISE)
+                    self._trigger_event(TriggerEventTypes.ROTATE_CLOCKWISE.value)
                 elif isinstance(response.events[0], RotationEvent) and response.events[0].degrees < 0:
-                    self._trigger_event(TriggerEventTypes.ROTATE_ANTICLOCKWISE)
+                    self._trigger_event(TriggerEventTypes.ROTATE_ANTICLOCKWISE.value)
 
                 self.async_write_ha_state()
                 self._last_event_id = response.events[0].id
