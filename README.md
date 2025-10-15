@@ -18,14 +18,8 @@ The core of the integration is provided by [plugp100](https://github.com/petreti
 
 Please help me to complete the [new roadmap](https://github.com/petretiandrea/home-assistant-tapo-p100/discussions/655)
 
-## Sponsors
-### Gold Sponsors
-
-<!-- gold --><!-- gold -->
-
-### Silver Sponsors
-
-<!-- silver --><a href="https://github.com/jmd-au"><img src="https:&#x2F;&#x2F;github.com&#x2F;jmd-au.png" width="60px" alt="User avatar: James Mac" /></a><!-- silver -->
+## Changes
+This repo contains a patch to support S200B events through polling
 
 ## Warnings
 
