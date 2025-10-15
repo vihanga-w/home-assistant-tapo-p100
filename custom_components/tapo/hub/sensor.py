@@ -256,7 +256,7 @@ class TriggerEvent(CoordinatedTapoEntity, EventEntity):
                 self.async_write_ha_state()
                 self._last_event_id = response.events[0].id
 
-            await asyncio.sleep(1)
+            await asyncio.sleep(0.5)
 
     async def async_added_to_hass(self) -> None:
         self._task = asyncio.create_task(self.event_loop())
