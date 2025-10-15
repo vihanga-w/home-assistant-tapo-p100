@@ -215,6 +215,7 @@ class TriggerEvent(CoordinatedTapoEntity, EventEntity):
     _attr_has_entity_name = True
     _task: Optional[asyncio.tasks.Task] = None
     _last_event_id: Optional[int] = None
+    _last_event_type: Optional[str] = None
 
     def __init__(
             self,
@@ -240,13 +241,17 @@ class TriggerEvent(CoordinatedTapoEntity, EventEntity):
                 self._last_event_id = response.events[0].id
             elif not self._last_event_id is None and self._last_event_id != response.events[0].id:
                 if isinstance(response.events[0], SingleClickEvent):
-                    self._trigger_event(TriggerEventTypes.SINGLE_PRESS.value)
+                    self._last_event_type = TriggerEventTypes.SINGLE_PRESS.value
+                    self._trigger_event(self._last_event_type)
                 elif isinstance(response.events[0], DoubleClickEvent):
-                    self._trigger_event(TriggerEventTypes.DOUBLE_PRESS.value)
+                    self._last_event_type = TriggerEventTypes.DOUBLE_PRESS.value
+                    self._trigger_event(self._last_event_type)
                 elif isinstance(response.events[0], RotationEvent) and response.events[0].degrees >= 0:
-                    self._trigger_event(TriggerEventTypes.ROTATE_CLOCKWISE.value)
+                    self._last_event_type = TriggerEventTypes.ROTATE_CLOCKWISE.value
+                    self._trigger_event(self._last_event_type)
                 elif isinstance(response.events[0], RotationEvent) and response.events[0].degrees < 0:
-                    self._trigger_event(TriggerEventTypes.ROTATE_ANTICLOCKWISE.value)
+                    self._last_event_type = TriggerEventTypes.ROTATE_ANTICLOCKWISE.value
+                    self._trigger_event(self._last_event_type)
 
                 self.async_write_ha_state()
                 self._last_event_id = response.events[0].id
@@ -255,6 +260,17 @@ class TriggerEvent(CoordinatedTapoEntity, EventEntity):
 
     async def async_added_to_hass(self) -> None:
         self._task = asyncio.create_task(self.event_loop())
+
+    @property
+    def state(self) -> Optional[str]:
+        """Return the last event type string as the entity state.
+
+        Falls back to the default EventEntity state (timestamp) if no event type
+        has been recorded yet.
+        """
+        if self._last_event_type is not None:
+            return self._last_event_type
+        return super().state
 
     async def async_will_remove_from_hass(self) -> None:
         self._task.cancel()
