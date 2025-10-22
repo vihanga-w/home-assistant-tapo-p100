@@ -296,9 +296,6 @@ class TriggerEvent(CoordinatedTapoEntity, EventEntity):
                         # Update last seen id to this event
                         self._last_event_id = ev.id
 
-                        # Briefly show an idle state between rapid events so the
-                        # frontend can display a short gap. Wait 100ms and set
-                        # state to "idle" before continuing to the next event.
                         await self.sleep_then_set_idle(0.1)
 
                     # If no new events were detected (all IDs <= _last_event_id),
@@ -360,7 +357,10 @@ class TriggerEvent(CoordinatedTapoEntity, EventEntity):
         # Always expose the rotate_factor attribute (value may be None). This
         # ensures Home Assistant shows the attribute in the UI even when no
         # rotation event has recently been recorded.
-        return {"rotate_factor": self._last_rotate_factor}
+        return {
+            "rotate_angle": self._last_rotate_factor * 360 if self._last_rotate_factor is not None else None,
+            "rotate_factor": self._last_rotate_factor,
+        }
 
     async def async_will_remove_from_hass(self) -> None:
         self._task.cancel()
