@@ -279,6 +279,7 @@ class TriggerEvent(CoordinatedTapoEntity, EventEntity):
                                 rotate_factor = float(ev.degrees) / 360.0
                             except Exception:
                                 rotate_factor = None
+                            print(ev.degrees, rotate_factor)
                         elif isinstance(ev, RotationEvent) and ev.degrees < 0:
                             event_type = TriggerEventTypes.ROTATE_ANTICLOCKWISE.value
                             try:
