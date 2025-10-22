@@ -268,7 +268,7 @@ class TriggerEvent(CoordinatedTapoEntity, EventEntity):
                         saw_new = True
 
                         # Determine event type and optional rotate_factor
-                        rotate_factor = None
+                        rotate_factor = self._last_rotate_factor
                         if isinstance(ev, SingleClickEvent):
                             event_type = TriggerEventTypes.SINGLE_PRESS.value
                         elif isinstance(ev, DoubleClickEvent):
