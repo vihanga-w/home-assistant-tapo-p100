@@ -316,6 +316,10 @@ class TriggerEvent(CoordinatedTapoEntity, EventEntity):
         Sets _last_event_type and _last_rotate_factor, triggers the HA event,
         and writes the HA state.
         """
+        # Keep the last rotate_factor if none is provided
+        if not rotate_factor:
+            rotate_factor = self._last_rotate_factor
+
         self._last_event_type = event_type
         self._last_rotate_factor = rotate_factor
         # Emit the event on the entity
@@ -327,11 +331,11 @@ class TriggerEvent(CoordinatedTapoEntity, EventEntity):
         """Set the entity state to 'idle' and clear rotate factor if needed."""
         if self._last_event_type != "idle":
             self._last_event_type = "idle"
-            self._last_rotate_factor = None
+            # self._last_rotate_factor = None
             self.async_write_ha_state()
 
     async def sleep_then_set_idle(self, seconds: float) -> None:
-        """Set the entity to idle, write state, then sleep for `seconds`."""
+        """Sleep for `seconds`, then set the entity to idle, write state."""
         await asyncio.sleep(seconds)
         await self._set_idle()
 
