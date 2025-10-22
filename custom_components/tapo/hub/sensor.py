@@ -216,6 +216,7 @@ class TriggerEvent(CoordinatedTapoEntity, EventEntity):
     _task: Optional[asyncio.tasks.Task] = None
     _last_event_id: Optional[int] = None
     _last_event_type: Optional[str] = None
+    _last_rotate_factor: Optional[float] = None
 
     def __init__(
             self,
@@ -257,9 +258,7 @@ class TriggerEvent(CoordinatedTapoEntity, EventEntity):
                 # then nothing changed since last check — set state to idle.
                 if len(response.events) == 0:
                     if self._last_event_id is not None:
-                        if self._last_event_type != "idle":
-                            self._last_event_type = "idle"
-                            self.async_write_ha_state()
+                        await self._set_idle()
                 else:
                     for ev in response.events:
                         # Only handle events strictly newer than the last seen
@@ -268,38 +267,73 @@ class TriggerEvent(CoordinatedTapoEntity, EventEntity):
 
                         saw_new = True
 
-                        # Determine event type
+                        # Determine event type and optional rotate_factor
+                        rotate_factor = None
                         if isinstance(ev, SingleClickEvent):
-                            self._last_event_type = TriggerEventTypes.SINGLE_PRESS.value
-                            self._trigger_event(self._last_event_type)
+                            event_type = TriggerEventTypes.SINGLE_PRESS.value
                         elif isinstance(ev, DoubleClickEvent):
-                            self._last_event_type = TriggerEventTypes.DOUBLE_PRESS.value
-                            self._trigger_event(self._last_event_type)
+                            event_type = TriggerEventTypes.DOUBLE_PRESS.value
                         elif isinstance(ev, RotationEvent) and ev.degrees >= 0:
-                            self._last_event_type = TriggerEventTypes.ROTATE_CLOCKWISE.value
-                            self._trigger_event(self._last_event_type)
+                            event_type = TriggerEventTypes.ROTATE_CLOCKWISE.value
+                            try:
+                                rotate_factor = float(ev.degrees) / 360.0
+                            except Exception:
+                                rotate_factor = None
                         elif isinstance(ev, RotationEvent) and ev.degrees < 0:
-                            self._last_event_type = TriggerEventTypes.ROTATE_ANTICLOCKWISE.value
-                            self._trigger_event(self._last_event_type)
+                            event_type = TriggerEventTypes.ROTATE_ANTICLOCKWISE.value
+                            try:
+                                rotate_factor = float(ev.degrees) / 360.0
+                            except Exception:
+                                rotate_factor = None
+                        else:
+                            # Unknown event type — skip
+                            continue
 
-                        # Update HA state for each event so UI shows the most recent
-                        # event right after it's emitted.
-                        self.async_write_ha_state()
+                        # Emit the event and update the HA state
+                        await self._emit_event(event_type, rotate_factor)
 
                         # Update last seen id to this event
                         self._last_event_id = ev.id
 
+                        # Briefly show an idle state between rapid events so the
+                        # frontend can display a short gap. Wait 100ms and set
+                        # state to "idle" before continuing to the next event.
+                        await self.sleep_then_set_idle(0.1)
+
                     # If no new events were detected (all IDs <= _last_event_id),
                     # set the state to idle.
                     if not saw_new:
-                        if self._last_event_type != "idle":
-                            self._last_event_type = "idle"
-                            self.async_write_ha_state()
+                        await self._set_idle()
 
             await asyncio.sleep(0.5)
 
     async def async_added_to_hass(self) -> None:
         self._task = asyncio.create_task(self.event_loop())
+
+    async def _emit_event(self, event_type: str, rotate_factor: Optional[float] = None) -> None:
+        """Emit an event and update the entity state/attributes.
+
+        Sets _last_event_type and _last_rotate_factor, triggers the HA event,
+        and writes the HA state.
+        """
+        self._last_event_type = event_type
+        self._last_rotate_factor = rotate_factor
+        # Emit the event on the entity
+        self._trigger_event(self._last_event_type)
+        # Write state so UI reflects the event and attributes
+        self.async_write_ha_state()
+
+    async def _set_idle(self) -> None:
+        """Set the entity state to 'idle' and clear rotate factor if needed."""
+        if self._last_event_type != "idle":
+            self._last_event_type = "idle"
+            self._last_rotate_factor = None
+            self.async_write_ha_state()
+
+    async def sleep_then_set_idle(self, seconds: float) -> None:
+        """Set the entity to idle, write state, then sleep for `seconds`."""
+        await asyncio.sleep(seconds)
+        await self._set_idle()
 
     @property
     def state(self) -> Optional[str]:
@@ -311,6 +345,17 @@ class TriggerEvent(CoordinatedTapoEntity, EventEntity):
         if self._last_event_type is not None:
             return self._last_event_type
         return super().state
+
+    @property
+    def extra_state_attributes(self) -> dict:
+        """Return any extra attributes for the entity state.
+
+        We expose `rotate_factor` when available (degrees / 360).
+        """
+        # Always expose the rotate_factor attribute (value may be None). This
+        # ensures Home Assistant shows the attribute in the UI even when no
+        # rotation event has recently been recorded.
+        return {"rotate_factor": self._last_rotate_factor}
 
     async def async_will_remove_from_hass(self) -> None:
         self._task.cancel()
